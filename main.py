@@ -1,251 +1,158 @@
-from fastapi import FastAPI, HTTPException, Form, Cookie, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from models import Movietop
-from datetime import datetime, timedelta
-import uuid
+import os
+import shutil
 
 app = FastAPI()
 
+os.makedirs("static", exist_ok=True)
+os.makedirs("static/img", exist_ok=True)
+os.makedirs("static/uploads", exist_ok=True)
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+HTML_STUDY = """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Моё учебное заведение</title>
+</head>
+<body>
+  <h1>БГИТУ</h1>
+  <p>Город: Брянск</p>
+  <p>Программа: ИВТ</p>
+  <img src="/static/img/BGITU.jpg" alt="">
+</body>
+</html>"""
+
+@app.get("/study", response_class=HTMLResponse)
+def study_page():
+    return HTML_STUDY
+
 movies: list[Movietop] = [
-    Movietop(name="Inception", director="Christopher Nolan", id=1, cost=160, is_available=True),
-    Movietop(name="Interstellar", director="Christopher Nolan", id=2, cost=165, is_available=True),
-    Movietop(name="The Matrix", director="Wachowski", id=3, cost=63, is_available=True),
-    Movietop(name="Fight Club", director="David Fincher", id=4, cost=63, is_available=False),
-    Movietop(name="Se7en", director="David Fincher", id=5, cost=33, is_available=True),
-    Movietop(name="Avatar", director="James Cameron", id=6, cost=237, is_available=True),
-    Movietop(name="Titanic", director="James Cameron", id=7, cost=200, is_available=True),
-    Movietop(name="Gladiator", director="Ridley Scott", id=8, cost=103, is_available=True),
-    Movietop(name="Joker", director="Todd Phillips", id=9, cost=55, is_available=True),
-    Movietop(name="The Godfather", director="Francis Ford Coppola", id=10, cost=7, is_available=False),
+    Movietop(name="Мир в огне", id=1, cost=0, director=""),
+    Movietop(name="Лермонтов", id=2, cost=0, director=""),
+    Movietop(name="Глазами пса", id=3, cost=0, director=""),
+    Movietop(name="Горыныч", id=4, cost=0, director=""),
+    Movietop(name="Финник 2", id=5, cost=0, director=""),
+    Movietop(name="Алиса в Стране Чудес", id=6, cost=0, director=""),
+    Movietop(name="Мажор в Дубае", id=7, cost=0, director=""),
+    Movietop(name="Папины дочки. Мама вернулась", id=8, cost=0, director=""),
+    Movietop(name="Детка на драйве", id=9, cost=0, director=""),
+    Movietop(name="Сердцеед", id=10, cost=0, director=""),
 ]
 
-sessions = {}
-
-users = {
-    "admin": "password123",
-    "user": "pass123"
-}
-
-@app.post("/login")
-async def login(
-        username: str = Form(...),
-        password: str = Form(...),
-        response: Response = None
-):
-    if username not in users or users[username] != password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = str(uuid.uuid4())
-
-    expiration_time = datetime.now() + timedelta(minutes=2)
-
-    sessions[token] = {
-        "username": username,
-        "login_time": datetime.now(),
-        "expiration_time": expiration_time
-    }
-
-    response.set_cookie(
-        key="session_token",
-        value=token,
-        httponly=True,
-        max_age=120
-    )
-
-    return {"message": "Login successful", "username": username}
-
-@app.get("/login-form", response_class=HTMLResponse)
-async def login_form():
-    return """
-    <html>
-        <head><title>Вход в систему</title></head>
-        <body>
-            <h2>Вход в систему</h2>
-            <form action="/login" method="post">
-                <label>Имя пользователя:</label><br>
-                <input type="text" name="username" required><br><br>
-
-                <label>Пароль:</label><br>
-                <input type="text" name="password" required><br><br>
-
-                <button type="submit">Войти</button>
-            </form>
-            <br>
-            <p>Тестовые учетные данные:</p>
-            <p>Пользователь: <strong>admin</strong> Пароль: <strong>password123</strong></p>
-            <p>Пользователь: <strong>user</strong> Пароль: <strong>pass123</strong></p>
-        </body>
-    </html>
-    """
-
-@app.get("/user")
-async def get_user(session_token: str = Cookie(None), response: Response = None):
-    if not session_token:
-        return {"message": "Unauthorized"}
-
-    if session_token not in sessions:
-        return {"message": "Unauthorized"}
-
-    session_data = sessions[session_token]
-    current_time = datetime.now()
-
-    if current_time > session_data["expiration_time"]:
-        del sessions[session_token]
-        return {"message": "Unauthorized"}
-
-    new_expiration_time = current_time + timedelta(minutes=2)
-    sessions[session_token]["expiration_time"] = new_expiration_time
-
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        max_age=120
-    )
-
-    return {
-        "profile": {
-            "username": session_data["username"],
-            "login_time": session_data["login_time"].isoformat(),
-            "current_time": current_time.isoformat(),
-            "session_expires_at": new_expiration_time.isoformat()
-        },
-        "movies": [
-            {
-                "name": m.name,
-                "director": m.director,
-                "id": m.id,
-                "cost": m.cost,
-                "is_available": m.is_available
-            }
-            for m in movies
-        ]
-    }
-
-@app.get("/study")
-async def get_study():
-    return {
-        "name": "БГИТУ",
-        "city": "Брянск",
-        "address": "ул. Станке Димитрова 3",
-        "website": "https://bgitu.ru",
-        "photo": "/static/school.png"
-    }
-
-@app.get("/photo", response_class=HTMLResponse)
-async def show_photo():
-    return """
-    <html>
-        <head><title>Фото учебного заведения</title></head>
-        <body>
-            <h2>Учебное заведение: БГИТУ</h2>
-            <img src="/static/school.png" alt="Фото БГИТУ" width="350">
-        </body>
-    </html>
-    """
+added_movies = []
 
 @app.get("/movietop/{movie_name}")
-async def get_movie(movie_name: str):
+def get_movie(movie_name: str):
     for m in movies:
         if m.name.lower() == movie_name.lower():
-            return m
-    raise HTTPException(status_code=404, detail="Movie not found")
+            return m.model_dump()
+    raise HTTPException(status_code=404, detail="Фильм не найден")
 
-@app.get("/add-movie-form", response_class=HTMLResponse)
-async def add_movie_form():
-    return """
-    <html>
-        <head><title>Добавить фильм</title></head>
-        <body>
-            <h2>Добавить новый фильм</h2>
-            <form action="/add-movie" method="post" enctype="multipart/form-data">
-                <label>Название фильма (текст):</label><br>
-                <input type="text" name="name" required><br><br>
-
-                <label>Режиссёр (текст):</label><br>
-                <input type="text" name="director" required><br><br>
-
-                <label>Стоимость в млн $ (число):</label><br>
-                <input type="number" name="cost" required><br><br>
-
-                <label>Доступен для проката (логическое):</label><br>
-                <input type="checkbox" name="is_available" checked><br><br>
-
-                <label>Обложка фильма (файл изображения):</label><br>
-                <input type="file" name="cover" accept="image/*"><br><br>
-
-                <button type="submit">Добавить фильм</button>
-            </form>
-            <br>
-            <a href="/movies-list">Посмотреть все фильмы</a>
-        </body>
-    </html>
-    """
+@app.get("/add-movie", response_class=HTMLResponse)
+def add_movie_form():
+    return """<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Добавить фильм</title>
+</head>
+<body>
+    <form action="/add-movie" method="post" enctype="multipart/form-data">
+        <p>Название: <input type="text" name="name" required></p>
+        <p>Режиссер: <input type="text" name="director" required></p>
+        <p>Бюджет: <input type="number" name="budget" required></p>
+        <p><label><input type="checkbox" name="is_hit"> окупился?</label></p>
+        <p>Описание фильма: <input type="file" name="description_file"></p>
+        <p>Обложка фильма: <input type="file" name="cover_file" accept="image/*"></p>
+        <p><input type="submit" value="Добавить фильм"></p>
+    </form>
+    <p><a href="/movies-with-photos">Посмотреть все фильмы с фото</a></p>
+</body>
+</html>"""
 
 @app.post("/add-movie")
 async def add_movie(
-        name: str = Form(...),
-        director: str = Form(...),
-        cost: int = Form(...),
-        is_available: bool = Form(False),
-        cover=None
+    name: str = Form(...),
+    director: str = Form(...), 
+    budget: int = Form(...),
+    is_hit: bool = Form(False),
+    description_file: UploadFile = File(None),
+    cover_file: UploadFile = File(None)
 ):
-    from pathlib import Path
-    import shutil
+    movie_id = len(movies) + len(added_movies) + 1
+    
+    description_path = None
+    cover_path = None
+    
+    if description_file and description_file.filename:
+        description_path = f"static/uploads/desc_{movie_id}_{description_file.filename}"
+        with open(description_path, "wb") as f:
+            shutil.copyfileobj(description_file.file, f)
+    
+    if cover_file and cover_file.filename:
+        cover_path = f"static/uploads/cover_{movie_id}_{cover_file.filename}"
+        with open(cover_path, "wb") as f:
+            shutil.copyfileobj(cover_file.file, f)
+    
 
-    new_id = max([m.id for m in movies]) + 1 if movies else 1
+    new_movie = {
+        "id": movie_id,
+        "name": name,
+        "director": director,
+        "budget": budget,
+        "is_hit": is_hit,
+        "description_file": description_path,
+        "cover_file": cover_path
+    }
+    
+    added_movies.append(new_movie)
+    
+    return {"message": "Фильм добавлен!", "movie": new_movie}
 
-    cover_path = ""
-    if cover:
-        file_path = Path("static") / cover.filename
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(cover.file, buffer)
-        cover_path = f"/static/{cover.filename}"
-
-    new_movie = Movietop(
-        name=name,
-        director=director,
-        id=new_id,
-        cost=cost,
-        is_available=is_available,
-        cover=cover_path
-    )
-
-    movies.append(new_movie)
-
-    return {"message": "Фильм добавлен", "movie": new_movie}
-
-@app.get("/movies-list", response_class=HTMLResponse)
-async def movies_list():
-    html = """
-    <html>
-        <head><title>Список фильмов</title></head>
-        <body>
-            <h2>Все фильмы</h2>
-    """
-
-    for movie in movies:
+@app.get("/movies-with-photos", response_class=HTMLResponse)
+def movies_with_photos():
+    html = """<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Фильмы с фото</title>
+</head>
+<body>
+    <h1>Все фильмы с фотографиями</h1>
+    <p><a href="/add-movie">Добавить новый фильм</a></p>
+"""
+    
+    for movie in added_movies:
         html += f"""
-        <div style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
-            <h3>{movie.name}</h3>
-            <p><strong>Режиссёр:</strong> {movie.director}</p>
-            <p><strong>Стоимость:</strong> ${movie.cost} млн</p>
-            <p><strong>Доступен:</strong> {'Да' if movie.is_available else 'Нет'}</p>
-        """
-
-        if movie.cover:
-            html += f'<img src="{movie.cover}" alt="{movie.name}" width="200"><br>'
-
-        html += "</div>"
-
+    <div style="border: 1px solid #ccc; margin: 10px; padding: 10px;">
+        <h3>{movie['name']}</h3>
+        <p><strong>Режиссер:</strong> {movie['director']}</p>
+        <p><strong>Бюджет:</strong> {movie['budget']}</p>
+        <p><strong>Хит сезона:</strong> {'Да' if movie['is_hit'] else 'Нет'}</p>
+"""
+        
+        if movie['cover_file']:
+            html += f'        <p><img src="/{movie["cover_file"]}" style="max-width: 300px;"></p>'
+        
+        if movie['description_file']:
+            html += f'        <p><a href="/{movie["description_file"]}">Скачать описание</a></p>'
+        
+        html += "    </div>"
+    
+    if not added_movies:
+        html += "<p>Пока нет добавленных фильмов с фото.</p>"
+    
     html += """
-            <br>
-            <a href="/add-movie-form">Добавить новый фильм</a>
-        </body>
-    </html>
-    """
-
+</body>
+</html>"""
+    
     return html
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8165, reload=True)
