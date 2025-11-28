@@ -1,0 +1,11 @@
+python main.py
+python -m venv venv
+venv\Scripts\activate
+pip install fastapi uvicorn pyjwt
+http://localhost:8165/study
+http://localhost:8165/movietop/Финник 2
+http://localhost:8165/add-movie
+http://localhost:8165/movies-with-photos
+
+http://localhost:8165/login
+http://localhost:8165/add_film/
